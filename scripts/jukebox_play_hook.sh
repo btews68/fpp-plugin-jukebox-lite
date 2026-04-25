@@ -23,25 +23,24 @@ call_fpp_api() {
 
 play_sequence() {
 	local seq_ref="$1"
-	local seq_path="$seq_ref"
 
-	if [[ "$seq_ref" != /* ]]; then
-		seq_path="/home/fpp/media/${seq_ref}"
-	fi
+	# FPP command API wants just the bare filename, not the Sequences/ prefix.
+	local seq_name
+	seq_name="$(basename "$seq_ref")"
 
-	if [[ ! -f "$seq_path" ]]; then
-		log "sequence file not found: ${seq_path}"
-	fi
+	local encoded
+	encoded="$(urlencode "$seq_name")"
 
-	if [[ -x /opt/fpp/scripts/play_sequence.sh ]]; then
-		/opt/fpp/scripts/play_sequence.sh "$seq_ref"
+	# FPP 9 preferred: POST to /api/command with JSON body.
+	local payload="{\"command\":\"Start Sequence\",\"args\":[\"${seq_name}\"]}"
+	if curl -fsS --max-time 10 -X POST \
+			-H "Content-Type: application/json" \
+			-d "$payload" \
+			"${FPP_API_BASE}/api/command" >/dev/null 2>&1; then
 		return 0
 	fi
 
-	local encoded
-	encoded="$(urlencode "$seq_ref")"
-
-	# Try both variants to support API differences across FPP versions.
+	# Fallback: GET-style command endpoints for older FPP versions.
 	call_fpp_api "/api/command/Start%20Sequence/${encoded}" || \
 	call_fpp_api "/api/command/StartSequence/${encoded}"
 }
