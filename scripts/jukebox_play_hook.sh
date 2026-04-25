@@ -28,6 +28,21 @@ play_sequence() {
 	local seq_name
 	seq_name="$(basename "$seq_ref")"
 
+	# Prefer local FPP helper script when present for maximum version compatibility.
+	if [[ -x /opt/fpp/scripts/play_sequence.sh ]]; then
+		if /opt/fpp/scripts/play_sequence.sh "$seq_name" >/dev/null 2>&1; then
+			return 0
+		fi
+
+		if /opt/fpp/scripts/play_sequence.sh "$seq_ref" >/dev/null 2>&1; then
+			return 0
+		fi
+
+		if [[ -f "/home/fpp/media/Sequences/${seq_name}" ]] && /opt/fpp/scripts/play_sequence.sh "/home/fpp/media/Sequences/${seq_name}" >/dev/null 2>&1; then
+			return 0
+		fi
+	fi
+
 	local encoded
 	encoded="$(urlencode "$seq_name")"
 
