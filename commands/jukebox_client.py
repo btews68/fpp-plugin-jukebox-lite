@@ -84,7 +84,16 @@ def run_play_hook(cfg, request_item):
         return False, f"play hook launch failed: {exc}"
 
     if proc.returncode != 0:
-        err = proc.stderr.strip() if proc.stderr else "play hook failed"
+        stderr_txt = (proc.stderr or "").strip()
+        stdout_txt = (proc.stdout or "").strip()
+        if stderr_txt and stdout_txt:
+            err = f"{stderr_txt} | {stdout_txt}"
+        elif stderr_txt:
+            err = stderr_txt
+        elif stdout_txt:
+            err = stdout_txt
+        else:
+            err = "play hook failed"
         return False, err
 
     return True, proc.stdout.strip()
