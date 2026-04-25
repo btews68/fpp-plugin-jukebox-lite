@@ -83,6 +83,8 @@ sequence_is_active() {
 
 confirm_sequence_started() {
 	local seq_name="$1"
+	local seq_no_ext
+	seq_no_ext="${seq_name%.fseq}"
 
 	if [[ "$VERIFY_START" != "1" ]]; then
 		return 0
@@ -95,6 +97,15 @@ confirm_sequence_started() {
 		fi
 		sleep 1
 	done
+
+	# Some FPP builds return success for sequence start but do not expose active sequence
+	# in /api/fppd/status or /api/status immediately. Trust a matching OK response.
+	if [[ -n "$LAST_TRIGGER_RESP" ]] && echo "$LAST_TRIGGER_RESP" | grep -Fq '"status":"OK"'; then
+		if echo "$LAST_TRIGGER_RESP" | grep -Fq "\"SequenceName\":\"${seq_name}\"" || \
+			echo "$LAST_TRIGGER_RESP" | grep -Fq "\"SequenceName\":\"${seq_no_ext}.fseq\""; then
+			return 0
+		fi
+	fi
 
 	ATTEMPTS+="trigger accepted (${LAST_TRIGGER}) resp=${LAST_TRIGGER_RESP} but ${seq_name} not seen active in status; "
 	return 1
