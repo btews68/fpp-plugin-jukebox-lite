@@ -33,8 +33,12 @@ foreach ($menuEntries as $entry)
 	}
 	else
 	{
-		printf("<li><a href='plugin.php?plugin=%s&page=%s'>%s</a></li>\n",
-			$currentPluginName, $entry['page'], $entry['text']);
+		$nopage = '';
+		if (isset($entry['wrap']) && ($entry['wrap'] == 0))
+			$nopage = '&nopage=1';
+
+		printf("<li><a href='plugin.php?plugin=%s&page=%s%s'>%s</a></li>\n",
+			$plugin, $entry['page'], $nopage, $entry['text']);
 	}
 }
 
