@@ -9,6 +9,7 @@ TITLE="${4:-}"
 FPP_API_BASE="${FPP_API_BASE:-http://127.0.0.1}"
 VERIFY_START="${JUKEBOX_VERIFY_START:-1}"
 LAST_TRIGGER=""
+LAST_TRIGGER_RESP=""
 
 log() {
 	echo "[jukebox_play_hook] $*"
@@ -37,6 +38,7 @@ try_post_command() {
 	resp="$(echo "$body" | sed '/^__HTTP__:/d' | tr '\n' ' ' | head -c 220)"
 	if [[ "$code" =~ ^2 ]]; then
 		LAST_TRIGGER="POST /api/command payload=${payload}"
+		LAST_TRIGGER_RESP="$resp"
 		return 0
 	fi
 	ATTEMPTS+="POST /api/command payload=${payload} -> ${code} body=${resp}; "
@@ -53,6 +55,7 @@ try_get_command() {
 	resp="$(echo "$body" | sed '/^__HTTP__:/d' | tr '\n' ' ' | head -c 220)"
 	if [[ "$code" =~ ^2 ]]; then
 		LAST_TRIGGER="GET ${path}"
+		LAST_TRIGGER_RESP="$resp"
 		return 0
 	fi
 	ATTEMPTS+="GET ${path} -> ${code} body=${resp}; "
@@ -93,7 +96,7 @@ confirm_sequence_started() {
 		sleep 1
 	done
 
-	ATTEMPTS+="trigger accepted (${LAST_TRIGGER}) but ${seq_name} not seen active in status; "
+	ATTEMPTS+="trigger accepted (${LAST_TRIGGER}) resp=${LAST_TRIGGER_RESP} but ${seq_name} not seen active in status; "
 	return 1
 }
 
@@ -106,6 +109,7 @@ try_play_sequence_script() {
 	}
 
 	LAST_TRIGGER="/opt/fpp/scripts/play_sequence.sh ${arg}"
+	LAST_TRIGGER_RESP="$out"
 	if confirm_sequence_started "$(basename "$arg")"; then
 		return 0
 	fi
@@ -116,6 +120,7 @@ play_sequence() {
 	local seq_ref="$1"
 	ATTEMPTS=""
 	LAST_TRIGGER=""
+	LAST_TRIGGER_RESP=""
 
 	# FPP command API wants just the bare filename, not the Sequences/ prefix.
 	local seq_name
@@ -183,6 +188,18 @@ play_sequence() {
 		return 0
 	fi
 	if try_get_command "/api/sequence/start/${encoded_no_ext}" && confirm_sequence_started "$seq_name"; then
+		return 0
+	fi
+	if try_get_command "/api/sequence/${encoded}/start/0" && confirm_sequence_started "$seq_name"; then
+		return 0
+	fi
+	if try_get_command "/api/sequence/${encoded_no_ext}/start/0" && confirm_sequence_started "$seq_name"; then
+		return 0
+	fi
+	if try_get_command "/api/sequence/${encoded}/start/1" && confirm_sequence_started "$seq_name"; then
+		return 0
+	fi
+	if try_get_command "/api/sequence/${encoded_no_ext}/start/1" && confirm_sequence_started "$seq_name"; then
 		return 0
 	fi
 
