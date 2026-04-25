@@ -14,6 +14,21 @@ CONFIG_PATH = f"/home/fpp/media/config/plugin.{PLUGIN_NAME}"
 DEFAULT_PLAY_CMD = "/home/fpp/media/scripts/jukebox_play_hook.sh"
 
 
+def _clean_setting(value, default=""):
+    raw = str(value if value is not None else default).strip()
+    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in ('"', "'"):
+        return raw[1:-1].strip()
+    return raw
+
+
+def _int_setting(cfg, key, default):
+    raw = _clean_setting(cfg.get(key, str(default)), str(default))
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"{key} must be an integer, got: {raw}") from exc
+
+
 def load_config():
     cp = configparser.ConfigParser()
     cp.read(CONFIG_PATH)
@@ -21,19 +36,19 @@ def load_config():
         cp["plugin"] = {}
     cfg = cp["plugin"]
 
-    base = cfg.get("JUKEBOX_API_BASE", "").strip().rstrip("/")
+    base = _clean_setting(cfg.get("JUKEBOX_API_BASE", "")).rstrip("/")
     if not base:
         raise RuntimeError("JUKEBOX_API_BASE missing in plugin config")
 
     return {
         "api_base": base,
-        "api_key": cfg.get("JUKEBOX_API_KEY", "").strip(),
-        "player_id": cfg.get("JUKEBOX_PLAYER_ID", "fpp-main").strip() or "fpp-main",
-        "poll_sec": int(cfg.get("JUKEBOX_POLL_SEC", "3")),
-        "http_timeout": int(cfg.get("JUKEBOX_HTTP_TIMEOUT_SEC", "4")),
-        "play_cmd": cfg.get("JUKEBOX_PLAY_CMD", DEFAULT_PLAY_CMD).strip() or DEFAULT_PLAY_CMD,
-        "idle_playlist": cfg.get("JUKEBOX_IDLE_PLAYLIST", "").strip(),
-        "fail_open": cfg.get("JUKEBOX_FAIL_OPEN", "1").strip() == "1",
+        "api_key": _clean_setting(cfg.get("JUKEBOX_API_KEY", "")),
+        "player_id": _clean_setting(cfg.get("JUKEBOX_PLAYER_ID", "fpp-main")) or "fpp-main",
+        "poll_sec": _int_setting(cfg, "JUKEBOX_POLL_SEC", 3),
+        "http_timeout": _int_setting(cfg, "JUKEBOX_HTTP_TIMEOUT_SEC", 4),
+        "play_cmd": _clean_setting(cfg.get("JUKEBOX_PLAY_CMD", DEFAULT_PLAY_CMD)) or DEFAULT_PLAY_CMD,
+        "idle_playlist": _clean_setting(cfg.get("JUKEBOX_IDLE_PLAYLIST", "")),
+        "fail_open": _clean_setting(cfg.get("JUKEBOX_FAIL_OPEN", "1")) == "1",
     }
 
 
