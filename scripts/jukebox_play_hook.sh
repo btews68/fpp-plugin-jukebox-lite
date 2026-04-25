@@ -136,6 +136,14 @@ play_sequence() {
 	# FPP command API wants just the bare filename, not the Sequences/ prefix.
 	local seq_name
 	seq_name="$(basename "$seq_ref")"
+	local seq_path
+	seq_path="/home/fpp/media/Sequences/${seq_name}"
+
+	if [[ ! -f "$seq_path" ]]; then
+		ATTEMPTS+="sequence file not found on FPP: ${seq_path}; "
+		log "sequence start failed. attempted: ${ATTEMPTS}"
+		return 1
+	fi
 
 	# Prefer local FPP helper script when present for maximum version compatibility.
 	if [[ -x /opt/fpp/scripts/play_sequence.sh ]]; then
