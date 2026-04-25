@@ -136,11 +136,21 @@ play_sequence() {
 	# FPP command API wants just the bare filename, not the Sequences/ prefix.
 	local seq_name
 	seq_name="$(basename "$seq_ref")"
-	local seq_path
-	seq_path="/home/fpp/media/Sequences/${seq_name}"
+	local seq_path=""
+	local candidate_dirs=(
+		"/home/fpp/media/Sequences"
+		"/home/fpp/media/sequences"
+	)
+	local dir
+	for dir in "${candidate_dirs[@]}"; do
+		if [[ -f "${dir}/${seq_name}" ]]; then
+			seq_path="${dir}/${seq_name}"
+			break
+		fi
+	done
 
-	if [[ ! -f "$seq_path" ]]; then
-		ATTEMPTS+="sequence file not found on FPP: ${seq_path}; "
+	if [[ -z "$seq_path" ]]; then
+		ATTEMPTS+="sequence file not found on FPP for ${seq_name}; checked /home/fpp/media/Sequences and /home/fpp/media/sequences; "
 		log "sequence start failed. attempted: ${ATTEMPTS}"
 		return 1
 	fi
