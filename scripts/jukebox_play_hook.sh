@@ -21,43 +21,34 @@ call_fpp_api() {
 	curl -fsS --max-time 10 "${FPP_API_BASE}${path}" >/dev/null
 }
 
-try_get_paths() {
+try_post_command() {
+	local payload="$1"
 	local code
-	local diagnostics=""
-
-	for path in "$@"; do
-		code="$(curl -sS -o /dev/null -w "%{http_code}" --max-time 10 "${FPP_API_BASE}${path}" || true)"
-		if [[ "$code" =~ ^2 ]]; then
-			return 0
-		fi
-		diagnostics+="GET ${path} -> ${code}; "
-	done
-
-	echo "$diagnostics"
+	code="$(curl -sS -o /dev/null -w "%{http_code}" --max-time 10 -X POST \
+		-H "Content-Type: application/json" \
+		-d "$payload" \
+		"${FPP_API_BASE}/api/command" || true)"
+	if [[ "$code" =~ ^2 ]]; then
+		return 0
+	fi
+	ATTEMPTS+="POST /api/command payload=${payload} -> ${code}; "
 	return 1
 }
 
-try_post_payloads() {
+try_get_command() {
+	local path="$1"
 	local code
-	local diagnostics=""
-
-	for payload in "$@"; do
-		code="$(curl -sS -o /dev/null -w "%{http_code}" --max-time 10 -X POST \
-			-H "Content-Type: application/json" \
-			-d "$payload" \
-			"${FPP_API_BASE}/api/command" || true)"
-		if [[ "$code" =~ ^2 ]]; then
-			return 0
-		fi
-		diagnostics+="POST /api/command payload=${payload} -> ${code}; "
-	done
-
-	echo "$diagnostics"
+	code="$(curl -sS -o /dev/null -w "%{http_code}" --max-time 10 "${FPP_API_BASE}${path}" || true)"
+	if [[ "$code" =~ ^2 ]]; then
+		return 0
+	fi
+	ATTEMPTS+="GET ${path} -> ${code}; "
 	return 1
 }
 
 play_sequence() {
 	local seq_ref="$1"
+  ATTEMPTS=""
 
 	# FPP command API wants just the bare filename, not the Sequences/ prefix.
 	local seq_name
@@ -81,27 +72,30 @@ play_sequence() {
 	local encoded
 	encoded="$(urlencode "$seq_name")"
 
-	# Try multiple POST payload variants used by different FPP builds.
-	local post_payloads=(
-		"{\"command\":\"Start Sequence\",\"args\":[\"${seq_name}\"]}"
-		"{\"command\":\"StartSequence\",\"args\":[\"${seq_name}\"]}"
-		"{\"command\":\"Start Sequence\",\"args\":[\"${seq_ref}\"]}"
-	)
-	if try_post_payloads "${post_payloads[@]}" >/dev/null; then
+	if try_post_command "{\"command\":\"Start Sequence\",\"args\":[\"${seq_name}\"]}"; then
+		return 0
+	fi
+	if try_post_command "{\"command\":\"StartSequence\",\"args\":[\"${seq_name}\"]}"; then
+		return 0
+	fi
+	if try_post_command "{\"command\":\"Start Sequence\",\"args\":[\"${seq_ref}\"]}"; then
 		return 0
 	fi
 
-	# Fallback: GET-style endpoints seen across FPP versions.
-	local get_paths=(
-		"/api/command/Start%20Sequence/${encoded}"
-		"/api/command/StartSequence/${encoded}"
-		"/api/command/Sequence/Start/${encoded}"
-		"/api/sequence/${encoded}/start"
-	)
+	if try_get_command "/api/command/Start%20Sequence/${encoded}"; then
+		return 0
+	fi
+	if try_get_command "/api/command/StartSequence/${encoded}"; then
+		return 0
+	fi
+	if try_get_command "/api/command/Sequence/Start/${encoded}"; then
+		return 0
+	fi
+	if try_get_command "/api/sequence/${encoded}/start"; then
+		return 0
+	fi
 
-	local details
-	details="$(try_get_paths "${get_paths[@]}")"
-	log "sequence start failed. attempted: ${details}"
+	log "sequence start failed. attempted: ${ATTEMPTS}"
 	return 1
 }
 
@@ -109,23 +103,23 @@ play_playlist() {
 	local playlist_name="$1"
 	local encoded
 	encoded="$(urlencode "$playlist_name")"
+  ATTEMPTS=""
 
-	local post_payloads=(
-		"{\"command\":\"Start Playlist\",\"args\":[\"${playlist_name}\"]}"
-		"{\"command\":\"Playlist Start\",\"args\":[\"${playlist_name}\"]}"
-	)
-	if try_post_payloads "${post_payloads[@]}" >/dev/null; then
+	if try_post_command "{\"command\":\"Start Playlist\",\"args\":[\"${playlist_name}\"]}"; then
+		return 0
+	fi
+	if try_post_command "{\"command\":\"Playlist Start\",\"args\":[\"${playlist_name}\"]}"; then
 		return 0
 	fi
 
-	local get_paths=(
-		"/api/command/Playlist/Start/${encoded}"
-		"/api/playlist/${encoded}/start"
-	)
+	if try_get_command "/api/command/Playlist/Start/${encoded}"; then
+		return 0
+	fi
+	if try_get_command "/api/playlist/${encoded}/start"; then
+		return 0
+	fi
 
-	local details
-	details="$(try_get_paths "${get_paths[@]}")"
-	log "playlist start failed. attempted: ${details}"
+	log "playlist start failed. attempted: ${ATTEMPTS}"
 	return 1
 }
 
