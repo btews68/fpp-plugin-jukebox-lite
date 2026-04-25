@@ -21,6 +21,43 @@ call_fpp_api() {
 	curl -fsS --max-time 10 "${FPP_API_BASE}${path}" >/dev/null
 }
 
+try_get_paths() {
+	local -n _paths_ref=$1
+	local code
+	local diagnostics=""
+
+	for path in "${_paths_ref[@]}"; do
+		code="$(curl -sS -o /dev/null -w "%{http_code}" --max-time 10 "${FPP_API_BASE}${path}" || true)"
+		if [[ "$code" =~ ^2 ]]; then
+			return 0
+		fi
+		diagnostics+="GET ${path} -> ${code}; "
+	done
+
+	echo "$diagnostics"
+	return 1
+}
+
+try_post_payloads() {
+	local -n _payloads_ref=$1
+	local code
+	local diagnostics=""
+
+	for payload in "${_payloads_ref[@]}"; do
+		code="$(curl -sS -o /dev/null -w "%{http_code}" --max-time 10 -X POST \
+			-H "Content-Type: application/json" \
+			-d "$payload" \
+			"${FPP_API_BASE}/api/command" || true)"
+		if [[ "$code" =~ ^2 ]]; then
+			return 0
+		fi
+		diagnostics+="POST /api/command payload=${payload} -> ${code}; "
+	done
+
+	echo "$diagnostics"
+	return 1
+}
+
 play_sequence() {
 	local seq_ref="$1"
 
@@ -46,18 +83,28 @@ play_sequence() {
 	local encoded
 	encoded="$(urlencode "$seq_name")"
 
-	# FPP 9 preferred: POST to /api/command with JSON body.
-	local payload="{\"command\":\"Start Sequence\",\"args\":[\"${seq_name}\"]}"
-	if curl -fsS --max-time 10 -X POST \
-			-H "Content-Type: application/json" \
-			-d "$payload" \
-			"${FPP_API_BASE}/api/command" >/dev/null 2>&1; then
+	# Try multiple POST payload variants used by different FPP builds.
+	local post_payloads=(
+		"{\"command\":\"Start Sequence\",\"args\":[\"${seq_name}\"]}"
+		"{\"command\":\"StartSequence\",\"args\":[\"${seq_name}\"]}"
+		"{\"command\":\"Start Sequence\",\"args\":[\"${seq_ref}\"]}"
+	)
+	if try_post_payloads post_payloads >/dev/null; then
 		return 0
 	fi
 
-	# Fallback: GET-style command endpoints for older FPP versions.
-	call_fpp_api "/api/command/Start%20Sequence/${encoded}" || \
-	call_fpp_api "/api/command/StartSequence/${encoded}"
+	# Fallback: GET-style endpoints seen across FPP versions.
+	local get_paths=(
+		"/api/command/Start%20Sequence/${encoded}"
+		"/api/command/StartSequence/${encoded}"
+		"/api/command/Sequence/Start/${encoded}"
+		"/api/sequence/${encoded}/start"
+	)
+
+	local details
+	details="$(try_get_paths get_paths)"
+	log "sequence start failed. attempted: ${details}"
+	return 1
 }
 
 play_playlist() {
@@ -65,7 +112,23 @@ play_playlist() {
 	local encoded
 	encoded="$(urlencode "$playlist_name")"
 
-	call_fpp_api "/api/command/Playlist/Start/${encoded}"
+	local post_payloads=(
+		"{\"command\":\"Start Playlist\",\"args\":[\"${playlist_name}\"]}"
+		"{\"command\":\"Playlist Start\",\"args\":[\"${playlist_name}\"]}"
+	)
+	if try_post_payloads post_payloads >/dev/null; then
+		return 0
+	fi
+
+	local get_paths=(
+		"/api/command/Playlist/Start/${encoded}"
+		"/api/playlist/${encoded}/start"
+	)
+
+	local details
+	details="$(try_get_paths get_paths)"
+	log "playlist start failed. attempted: ${details}"
+	return 1
 }
 
 if [[ -z "$MEDIA_TYPE" || -z "$MEDIA_REF" ]]; then
