@@ -7,6 +7,7 @@ REQUEST_ID="${3:-}"
 TITLE="${4:-}"
 
 FPP_API_BASE="${FPP_API_BASE:-http://127.0.0.1}"
+VERIFY_START="${JUKEBOX_VERIFY_START:-1}"
 
 log() {
 	echo "[jukebox_play_hook] $*"
@@ -46,6 +47,42 @@ try_get_command() {
 	return 1
 }
 
+sequence_is_active() {
+	local seq_name="$1"
+	local body
+
+	body="$(curl -sS --max-time 6 "${FPP_API_BASE}/api/fppd/status" || true)"
+	if [[ -n "$body" ]] && echo "$body" | grep -Fq "$seq_name"; then
+		return 0
+	fi
+
+	body="$(curl -sS --max-time 6 "${FPP_API_BASE}/api/status" || true)"
+	if [[ -n "$body" ]] && echo "$body" | grep -Fq "$seq_name"; then
+		return 0
+	fi
+
+	return 1
+}
+
+confirm_sequence_started() {
+	local seq_name="$1"
+
+	if [[ "$VERIFY_START" != "1" ]]; then
+		return 0
+	fi
+
+	local i
+	for i in 1 2 3 4 5; do
+		if sequence_is_active "$seq_name"; then
+			return 0
+		fi
+		sleep 1
+	done
+
+	ATTEMPTS+="trigger accepted but ${seq_name} not seen active in status; "
+	return 1
+}
+
 play_sequence() {
 	local seq_ref="$1"
   ATTEMPTS=""
@@ -56,15 +93,15 @@ play_sequence() {
 
 	# Prefer local FPP helper script when present for maximum version compatibility.
 	if [[ -x /opt/fpp/scripts/play_sequence.sh ]]; then
-		if /opt/fpp/scripts/play_sequence.sh "$seq_name" >/dev/null 2>&1; then
+		if /opt/fpp/scripts/play_sequence.sh "$seq_name" >/dev/null 2>&1 && confirm_sequence_started "$seq_name"; then
 			return 0
 		fi
 
-		if /opt/fpp/scripts/play_sequence.sh "$seq_ref" >/dev/null 2>&1; then
+		if /opt/fpp/scripts/play_sequence.sh "$seq_ref" >/dev/null 2>&1 && confirm_sequence_started "$seq_name"; then
 			return 0
 		fi
 
-		if [[ -f "/home/fpp/media/Sequences/${seq_name}" ]] && /opt/fpp/scripts/play_sequence.sh "/home/fpp/media/Sequences/${seq_name}" >/dev/null 2>&1; then
+		if [[ -f "/home/fpp/media/Sequences/${seq_name}" ]] && /opt/fpp/scripts/play_sequence.sh "/home/fpp/media/Sequences/${seq_name}" >/dev/null 2>&1 && confirm_sequence_started "$seq_name"; then
 			return 0
 		fi
 	fi
@@ -72,26 +109,26 @@ play_sequence() {
 	local encoded
 	encoded="$(urlencode "$seq_name")"
 
-	if try_post_command "{\"command\":\"Start Sequence\",\"args\":[\"${seq_name}\"]}"; then
+	if try_post_command "{\"command\":\"Start Sequence\",\"args\":[\"${seq_name}\"]}" && confirm_sequence_started "$seq_name"; then
 		return 0
 	fi
-	if try_post_command "{\"command\":\"StartSequence\",\"args\":[\"${seq_name}\"]}"; then
+	if try_post_command "{\"command\":\"StartSequence\",\"args\":[\"${seq_name}\"]}" && confirm_sequence_started "$seq_name"; then
 		return 0
 	fi
-	if try_post_command "{\"command\":\"Start Sequence\",\"args\":[\"${seq_ref}\"]}"; then
+	if try_post_command "{\"command\":\"Start Sequence\",\"args\":[\"${seq_ref}\"]}" && confirm_sequence_started "$seq_name"; then
 		return 0
 	fi
 
-	if try_get_command "/api/command/Start%20Sequence/${encoded}"; then
+	if try_get_command "/api/command/Start%20Sequence/${encoded}" && confirm_sequence_started "$seq_name"; then
 		return 0
 	fi
-	if try_get_command "/api/command/StartSequence/${encoded}"; then
+	if try_get_command "/api/command/StartSequence/${encoded}" && confirm_sequence_started "$seq_name"; then
 		return 0
 	fi
-	if try_get_command "/api/command/Sequence/Start/${encoded}"; then
+	if try_get_command "/api/command/Sequence/Start/${encoded}" && confirm_sequence_started "$seq_name"; then
 		return 0
 	fi
-	if try_get_command "/api/sequence/${encoded}/start"; then
+	if try_get_command "/api/sequence/${encoded}/start" && confirm_sequence_started "$seq_name"; then
 		return 0
 	fi
 
