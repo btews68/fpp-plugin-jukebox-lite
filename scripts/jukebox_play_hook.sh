@@ -61,15 +61,17 @@ try_get_command() {
 
 sequence_is_active() {
 	local seq_name="$1"
+	local seq_no_ext
+	seq_no_ext="${seq_name%.fseq}"
 	local body
 
 	body="$(curl -sS --max-time 6 "${FPP_API_BASE}/api/fppd/status" || true)"
-	if [[ -n "$body" ]] && echo "$body" | grep -Fq "$seq_name"; then
+	if [[ -n "$body" ]] && (echo "$body" | grep -Fq "$seq_name" || echo "$body" | grep -Fq "$seq_no_ext"); then
 		return 0
 	fi
 
 	body="$(curl -sS --max-time 6 "${FPP_API_BASE}/api/status" || true)"
-	if [[ -n "$body" ]] && echo "$body" | grep -Fq "$seq_name"; then
+	if [[ -n "$body" ]] && (echo "$body" | grep -Fq "$seq_name" || echo "$body" | grep -Fq "$seq_no_ext"); then
 		return 0
 	fi
 
@@ -142,6 +144,12 @@ play_sequence() {
 
 	local encoded
 	encoded="$(urlencode "$seq_name")"
+	local seq_no_ext
+	seq_no_ext="${seq_name%.fseq}"
+	local encoded_no_ext
+	encoded_no_ext="$(urlencode "$seq_no_ext")"
+	local encoded_ref
+	encoded_ref="$(urlencode "$seq_ref")"
 
 	if try_post_command "{\"command\":\"Start Sequence\",\"args\":[\"${seq_name}\"]}" && confirm_sequence_started "$seq_name"; then
 		return 0
@@ -163,6 +171,18 @@ play_sequence() {
 		return 0
 	fi
 	if try_get_command "/api/sequence/${encoded}/start" && confirm_sequence_started "$seq_name"; then
+		return 0
+	fi
+	if try_get_command "/api/sequence/${encoded_no_ext}/start" && confirm_sequence_started "$seq_name"; then
+		return 0
+	fi
+	if try_get_command "/api/sequence/${encoded_ref}/start" && confirm_sequence_started "$seq_name"; then
+		return 0
+	fi
+	if try_get_command "/api/sequence/start/${encoded}" && confirm_sequence_started "$seq_name"; then
+		return 0
+	fi
+	if try_get_command "/api/sequence/start/${encoded_no_ext}" && confirm_sequence_started "$seq_name"; then
 		return 0
 	fi
 
