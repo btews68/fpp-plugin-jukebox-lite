@@ -1,0 +1,21 @@
+{
+  "repoName": "fpp-plugin-jukebox-lite",
+  "name": "Jukebox Lite",
+  "author": "Bill Tews + GitHub Copilot",
+  "description": "Lightweight Falcon Player jukebox plugin for Hostinger API queues (no voting).",
+  "homeURL": "https://github.com/btews68/fpp-plugin-jukebox-lite",
+  "srcURL": "https://github.com/btews68/fpp-plugin-jukebox-lite.git",
+  "bugURL": "https://github.com/btews68/fpp-plugin-jukebox-lite/issues",
+  "allowUpdates": 1,
+  "versions": [
+    {
+      "minFPPVersion": "9.0",
+      "maxFPPVersion": "0",
+      "branch": "main",
+      "sha": "",
+      "dependencies": {
+        "packages": []
+      }
+    }
+  ]
+}

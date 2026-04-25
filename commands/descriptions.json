@@ -1,0 +1,12 @@
+[
+  {
+    "name": "Jukebox Poll Once",
+    "script": "jukebox_once.sh",
+    "args": []
+  },
+  {
+    "name": "Jukebox Poll Loop",
+    "script": "jukebox_poll.sh",
+    "args": []
+  }
+]
