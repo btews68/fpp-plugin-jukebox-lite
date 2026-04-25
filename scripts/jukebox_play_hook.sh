@@ -8,6 +8,7 @@ TITLE="${4:-}"
 
 FPP_API_BASE="${FPP_API_BASE:-http://127.0.0.1}"
 VERIFY_START="${JUKEBOX_VERIFY_START:-1}"
+LAST_TRIGGER=""
 
 log() {
 	echo "[jukebox_play_hook] $*"
@@ -25,25 +26,36 @@ call_fpp_api() {
 try_post_command() {
 	local payload="$1"
 	local code
-	code="$(curl -sS -o /dev/null -w "%{http_code}" --max-time 10 -X POST \
+	local body
+	body="$(curl -sS --max-time 10 -X POST \
 		-H "Content-Type: application/json" \
 		-d "$payload" \
+		-w "\n__HTTP__:%{http_code}" \
 		"${FPP_API_BASE}/api/command" || true)"
+	code="$(echo "$body" | sed -n 's/^__HTTP__://p' | tail -n1)"
+	local resp
+	resp="$(echo "$body" | sed '/^__HTTP__:/d' | tr '\n' ' ' | head -c 220)"
 	if [[ "$code" =~ ^2 ]]; then
+		LAST_TRIGGER="POST /api/command payload=${payload}"
 		return 0
 	fi
-	ATTEMPTS+="POST /api/command payload=${payload} -> ${code}; "
+	ATTEMPTS+="POST /api/command payload=${payload} -> ${code} body=${resp}; "
 	return 1
 }
 
 try_get_command() {
 	local path="$1"
 	local code
-	code="$(curl -sS -o /dev/null -w "%{http_code}" --max-time 10 "${FPP_API_BASE}${path}" || true)"
+	local body
+	body="$(curl -sS --max-time 10 -w "\n__HTTP__:%{http_code}" "${FPP_API_BASE}${path}" || true)"
+	code="$(echo "$body" | sed -n 's/^__HTTP__://p' | tail -n1)"
+	local resp
+	resp="$(echo "$body" | sed '/^__HTTP__:/d' | tr '\n' ' ' | head -c 220)"
 	if [[ "$code" =~ ^2 ]]; then
+		LAST_TRIGGER="GET ${path}"
 		return 0
 	fi
-	ATTEMPTS+="GET ${path} -> ${code}; "
+	ATTEMPTS+="GET ${path} -> ${code} body=${resp}; "
 	return 1
 }
 
@@ -79,13 +91,29 @@ confirm_sequence_started() {
 		sleep 1
 	done
 
-	ATTEMPTS+="trigger accepted but ${seq_name} not seen active in status; "
+	ATTEMPTS+="trigger accepted (${LAST_TRIGGER}) but ${seq_name} not seen active in status; "
+	return 1
+}
+
+try_play_sequence_script() {
+	local arg="$1"
+	local out
+	out="$(/opt/fpp/scripts/play_sequence.sh "$arg" 2>&1)" || {
+		ATTEMPTS+="/opt/fpp/scripts/play_sequence.sh ${arg} failed: ${out}; "
+		return 1
+	}
+
+	LAST_TRIGGER="/opt/fpp/scripts/play_sequence.sh ${arg}"
+	if confirm_sequence_started "$(basename "$arg")"; then
+		return 0
+	fi
 	return 1
 }
 
 play_sequence() {
 	local seq_ref="$1"
-  ATTEMPTS=""
+	ATTEMPTS=""
+	LAST_TRIGGER=""
 
 	# FPP command API wants just the bare filename, not the Sequences/ prefix.
 	local seq_name
@@ -93,15 +121,21 @@ play_sequence() {
 
 	# Prefer local FPP helper script when present for maximum version compatibility.
 	if [[ -x /opt/fpp/scripts/play_sequence.sh ]]; then
-		if /opt/fpp/scripts/play_sequence.sh "$seq_name" >/dev/null 2>&1 && confirm_sequence_started "$seq_name"; then
+		if try_play_sequence_script "$seq_name"; then
 			return 0
 		fi
 
-		if /opt/fpp/scripts/play_sequence.sh "$seq_ref" >/dev/null 2>&1 && confirm_sequence_started "$seq_name"; then
+		if try_play_sequence_script "$seq_ref"; then
 			return 0
 		fi
 
-		if [[ -f "/home/fpp/media/Sequences/${seq_name}" ]] && /opt/fpp/scripts/play_sequence.sh "/home/fpp/media/Sequences/${seq_name}" >/dev/null 2>&1 && confirm_sequence_started "$seq_name"; then
+		if try_play_sequence_script "/home/fpp/media/Sequences/${seq_name}"; then
+			return 0
+		fi
+
+		local seq_no_ext
+		seq_no_ext="${seq_name%.fseq}"
+		if [[ "$seq_no_ext" != "$seq_name" ]] && try_play_sequence_script "$seq_no_ext"; then
 			return 0
 		fi
 	fi
@@ -140,7 +174,8 @@ play_playlist() {
 	local playlist_name="$1"
 	local encoded
 	encoded="$(urlencode "$playlist_name")"
-  ATTEMPTS=""
+	ATTEMPTS=""
+	LAST_TRIGGER=""
 
 	if try_post_command "{\"command\":\"Start Playlist\",\"args\":[\"${playlist_name}\"]}"; then
 		return 0
