@@ -22,11 +22,10 @@ call_fpp_api() {
 }
 
 try_get_paths() {
-	local -n _paths_ref=$1
 	local code
 	local diagnostics=""
 
-	for path in "${_paths_ref[@]}"; do
+	for path in "$@"; do
 		code="$(curl -sS -o /dev/null -w "%{http_code}" --max-time 10 "${FPP_API_BASE}${path}" || true)"
 		if [[ "$code" =~ ^2 ]]; then
 			return 0
@@ -39,11 +38,10 @@ try_get_paths() {
 }
 
 try_post_payloads() {
-	local -n _payloads_ref=$1
 	local code
 	local diagnostics=""
 
-	for payload in "${_payloads_ref[@]}"; do
+	for payload in "$@"; do
 		code="$(curl -sS -o /dev/null -w "%{http_code}" --max-time 10 -X POST \
 			-H "Content-Type: application/json" \
 			-d "$payload" \
@@ -89,7 +87,7 @@ play_sequence() {
 		"{\"command\":\"StartSequence\",\"args\":[\"${seq_name}\"]}"
 		"{\"command\":\"Start Sequence\",\"args\":[\"${seq_ref}\"]}"
 	)
-	if try_post_payloads post_payloads >/dev/null; then
+	if try_post_payloads "${post_payloads[@]}" >/dev/null; then
 		return 0
 	fi
 
@@ -102,7 +100,7 @@ play_sequence() {
 	)
 
 	local details
-	details="$(try_get_paths get_paths)"
+	details="$(try_get_paths "${get_paths[@]}")"
 	log "sequence start failed. attempted: ${details}"
 	return 1
 }
@@ -116,7 +114,7 @@ play_playlist() {
 		"{\"command\":\"Start Playlist\",\"args\":[\"${playlist_name}\"]}"
 		"{\"command\":\"Playlist Start\",\"args\":[\"${playlist_name}\"]}"
 	)
-	if try_post_payloads post_payloads >/dev/null; then
+	if try_post_payloads "${post_payloads[@]}" >/dev/null; then
 		return 0
 	fi
 
@@ -126,7 +124,7 @@ play_playlist() {
 	)
 
 	local details
-	details="$(try_get_paths get_paths)"
+	details="$(try_get_paths "${get_paths[@]}")"
 	log "playlist start failed. attempted: ${details}"
 	return 1
 }
